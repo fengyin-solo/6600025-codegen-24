@@ -6,7 +6,7 @@ import FrameTable from './components/FrameTable.vue';
 import SignalChart from './components/SignalChart.vue';
 import DiagnosticTemplatePanel from './components/DiagnosticTemplatePanel.vue';
 import AlarmPanel from './components/AlarmPanel.vue';
-import type { DiagnosticTemplate } from './types';
+
 
 const store = useCanBusStore();
 const templatesStore = useTemplatesStore();

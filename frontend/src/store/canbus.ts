@@ -269,6 +269,7 @@ export const useCanBusStore = defineStore('canbus', () => {
     filterText.value = template.filterText;
     focusSignals.value = [...template.focusSignals];
     alarmRules.value = template.alarmRules.map(r => ({ ...r }));
+    activeAlarms.value = [];
     activeTemplateId.value = template.id;
   }
 

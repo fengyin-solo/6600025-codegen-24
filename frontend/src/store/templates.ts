@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, computed, watch } from 'vue';
+import { ref, computed } from 'vue';
 import type { DiagnosticTemplate, Vehicle } from '../types';
 
 const TEMPLATES_KEY = 'canbus_diagnostic_templates';
@@ -32,8 +32,8 @@ const DEFAULT_TEMPLATES: DiagnosticTemplate[] = [
         message: '发动机转速过高'
       }
     ],
-    createdAt: Date.now(),
-    updatedAt: Date.now()
+    createdAt: 0,
+    updatedAt: 0
   },
   {
     id: 'default_speed',
@@ -52,8 +52,8 @@ const DEFAULT_TEMPLATES: DiagnosticTemplate[] = [
         message: '车速超过限值'
       }
     ],
-    createdAt: Date.now(),
-    updatedAt: Date.now()
+    createdAt: 0,
+    updatedAt: 0
   }
 ];
 
@@ -82,11 +82,12 @@ function generateId(prefix: string): string {
 function initializeTemplates(): DiagnosticTemplate[] {
   const existing = loadFromStorage<DiagnosticTemplate[]>(TEMPLATES_KEY, []);
   if (existing.length > 0) return existing;
+  const now = Date.now();
   const defaults = DEFAULT_TEMPLATES.map(t => ({
     ...t,
     id: `tpl_default_${t.id}`,
-    createdAt: Date.now(),
-    updatedAt: Date.now()
+    createdAt: now,
+    updatedAt: now
   }));
   saveToStorage(TEMPLATES_KEY, defaults);
   return defaults;
@@ -151,6 +152,11 @@ export const useTemplatesStore = defineStore('templates', () => {
   function deleteTemplate(id: string) {
     templates.value = templates.value.filter(t => t.id !== id);
     persistTemplates();
+    for (const v of vehicles.value) {
+      if (v.activeTemplateId === id) {
+        updateVehicle(v.id, { activeTemplateId: null });
+      }
+    }
   }
 
   function getTemplate(id: string): DiagnosticTemplate | undefined {
@@ -190,22 +196,13 @@ export const useTemplatesStore = defineStore('templates', () => {
     }
   }
 
-  function deleteTemplate(id: string) {
-    templates.value = templates.value.filter(t => t.id !== id);
-    persistTemplates();
-    for (const v of vehicles.value) {
-      if (v.activeTemplateId === id) {
-        updateVehicle(v.id, { activeTemplateId: null });
-      }
-    }
-  }
-
   function resetToDefaults() {
+    const now = Date.now();
     const defaults = DEFAULT_TEMPLATES.map(t => ({
       ...t,
       id: `tpl_default_${t.id}`,
-      createdAt: Date.now(),
-      updatedAt: Date.now()
+      createdAt: now,
+      updatedAt: now
     }));
     templates.value = defaults;
     persistTemplates();
