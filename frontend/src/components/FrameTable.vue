@@ -82,12 +82,18 @@ function getSignalUnit(name: string): string {
     </div>
 
     <!-- Search Input -->
-    <div class="px-4 py-2 bg-gray-800 border-b border-gray-700">
+    <div class="px-4 py-2 bg-gray-800 border-b border-gray-700 flex gap-2">
+      <input
+        v-model="store.filterId"
+        type="text"
+        placeholder="CAN ID 筛选..."
+        class="w-40 px-3 py-1.5 bg-gray-900 border border-gray-600 rounded text-gray-100 text-sm placeholder-gray-500 focus:outline-none focus:border-cyan-500"
+      />
       <input
         v-model="store.filterText"
         type="text"
         placeholder="搜索 CAN ID 或信号名称..."
-        class="w-full px-3 py-1.5 bg-gray-900 border border-gray-600 rounded text-gray-100 text-sm placeholder-gray-500 focus:outline-none focus:border-cyan-500"
+        class="flex-1 px-3 py-1.5 bg-gray-900 border border-gray-600 rounded text-gray-100 text-sm placeholder-gray-500 focus:outline-none focus:border-cyan-500"
       />
     </div>
 
@@ -131,7 +137,7 @@ function getSignalUnit(name: string): string {
             <td class="px-3 py-1.5 text-gray-400">
               <span v-for="(val, key) in frame.decoded" :key="String(key)" class="inline-block mr-2">
                 <span class="text-gray-500">{{ key }}:</span>
-                <span class="text-yellow-300">{{ typeof val === 'number' ? val.toFixed(1) : val }}</span>
+                <span :class="store.focusSignals.includes(String(key)) ? 'text-cyan-300 font-bold' : 'text-yellow-300'">{{ typeof val === 'number' ? val.toFixed(1) : val }}</span>
               </span>
             </td>
           </tr>

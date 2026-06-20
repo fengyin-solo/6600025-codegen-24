@@ -18,17 +18,29 @@ const chartRef = ref<InstanceType<typeof VChart> | null>(null);
 
 const chartOption = computed(() => {
   const signalEntries = Array.from(store.signals.entries());
+  const hasFocus = store.focusSignals.length > 0;
 
   const colors = ['#06b6d4', '#22c55e', '#ef4444', '#eab308', '#a855f7'];
-  const series = signalEntries.map(([name, sig], idx) => ({
-    name,
-    type: 'line' as const,
-    smooth: true,
-    symbol: 'none',
-    lineStyle: { width: 2 },
-    itemStyle: { color: colors[idx % colors.length] },
-    data: sig.data.map(d => [d.time, d.value])
-  }));
+  const series = signalEntries.map(([name, sig], idx) => {
+    const isFocused = store.focusSignals.includes(name);
+    const dimmed = hasFocus && !isFocused;
+    return {
+      name,
+      type: 'line' as const,
+      smooth: true,
+      symbol: 'none',
+      lineStyle: {
+        width: isFocused ? 3 : 2,
+        opacity: dimmed ? 0.25 : 1
+      },
+      itemStyle: {
+        color: colors[idx % colors.length],
+        opacity: dimmed ? 0.25 : 1
+      },
+      z: isFocused ? 10 : 1,
+      data: sig.data.map(d => [d.time, d.value])
+    };
+  });
 
   return {
     backgroundColor: '#111827',
@@ -90,9 +102,17 @@ const chartOption = computed(() => {
   <div class="flex flex-col h-full bg-gray-900 rounded-lg overflow-hidden">
     <div class="px-4 py-2 bg-gray-800 border-b border-gray-700 flex items-center justify-between">
       <h3 class="text-sm font-semibold text-gray-300">信号趋势图</h3>
-      <span class="text-xs text-gray-500">
-        {{ store.signals.size }} 个信号活跃
-      </span>
+      <div class="flex items-center gap-2">
+        <span
+          v-if="store.focusSignals.length > 0"
+          class="text-xs px-1.5 py-0.5 bg-cyan-900/50 text-cyan-300 rounded"
+        >
+          关注 {{ store.focusSignals.length }}
+        </span>
+        <span class="text-xs text-gray-500">
+          {{ store.signals.size }} 个信号活跃
+        </span>
+      </div>
     </div>
     <div class="flex-1 p-2">
       <VChart

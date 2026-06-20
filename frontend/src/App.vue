@@ -1,9 +1,67 @@
 <script setup lang="ts">
+import { ref, watch, onMounted, computed } from 'vue';
 import { useCanBusStore } from './store/canbus';
+import { useTemplatesStore } from './store/templates';
 import FrameTable from './components/FrameTable.vue';
 import SignalChart from './components/SignalChart.vue';
+import DiagnosticTemplatePanel from './components/DiagnosticTemplatePanel.vue';
+import AlarmPanel from './components/AlarmPanel.vue';
+import type { DiagnosticTemplate } from './types';
 
 const store = useCanBusStore();
+const templatesStore = useTemplatesStore();
+
+const showTemplatePanel = ref(false);
+
+const currentTemplateName = computed(() => {
+  if (!store.activeTemplateId) return '';
+  const tpl = templatesStore.getTemplate(store.activeTemplateId);
+  return tpl?.name || '';
+});
+
+const sortedTemplates = computed(() =>
+  [...templatesStore.templates].sort((a, b) => b.updatedAt - a.updatedAt)
+);
+
+function applyVehicleTemplate() {
+  const vehicle = templatesStore.currentVehicle;
+  if (!vehicle) return;
+  if (vehicle.activeTemplateId) {
+    const tpl = templatesStore.getTemplate(vehicle.activeTemplateId);
+    if (tpl) {
+      store.applyTemplate(tpl);
+    }
+  } else {
+    store.clearTemplateState();
+  }
+}
+
+function handleQuickTemplateChange(templateId: string) {
+  if (!templateId) {
+    store.clearTemplateState();
+    if (templatesStore.currentVehicle) {
+      templatesStore.setVehicleTemplate(templatesStore.currentVehicle.id, null);
+    }
+    return;
+  }
+  const tpl = templatesStore.getTemplate(templateId);
+  if (tpl) {
+    store.applyTemplate(tpl);
+    if (templatesStore.currentVehicle) {
+      templatesStore.setVehicleTemplate(templatesStore.currentVehicle.id, tpl.id);
+    }
+  }
+}
+
+watch(() => templatesStore.currentVehicleId, () => {
+  applyVehicleTemplate();
+});
+
+onMounted(() => {
+  if (templatesStore.currentVehicle) {
+    applyVehicleTemplate();
+  }
+});
 
 function handleLoadDbc() {
   store.loadMockDbc();
@@ -36,6 +94,61 @@ function handleExport() {
       </div>
 
       <div class="flex items-center gap-2">
+        <!-- Vehicle selector -->
+        <div class="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-700 border border-gray-600 rounded text-sm">
+          <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l1.5-3h6L13 8M3 8v10a1 1 0 001 1h16a1 1 0 001-1V8M3 8h18M8 12h.01M12 12h.01M16 12h.01" />
+          </svg>
+          <select
+            v-if="templatesStore.vehicles.length > 0"
+            :value="templatesStore.currentVehicleId || ''"
+            @change="templatesStore.switchVehicle(($event.target as HTMLSelectElement).value)"
+            class="bg-transparent text-gray-200 text-sm focus:outline-none cursor-pointer max-w-[120px]"
+          >
+            <option v-for="v in templatesStore.vehicles" :key="v.id" :value="v.id" class="bg-gray-800">
+              {{ v.name }}
+            </option>
+          </select>
+          <span v-else class="text-gray-500 text-sm">无车辆</span>
+        </div>
+
+        <!-- Quick template selector -->
+        <div
+          v-if="templatesStore.vehicles.length > 0"
+          class="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-700 border border-gray-600 rounded text-sm"
+        >
+          <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+          </svg>
+          <select
+            :value="store.activeTemplateId || ''"
+            @change="handleQuickTemplateChange(($event.target as HTMLSelectElement).value)"
+            class="bg-transparent text-gray-200 text-sm focus:outline-none cursor-pointer max-w-[140px]"
+          >
+            <option value="" class="bg-gray-800">— 无模板 —</option>
+            <option v-for="tpl in sortedTemplates" :key="tpl.id" :value="tpl.id" class="bg-gray-800">
+              {{ tpl.name }}
+            </option>
+          </select>
+        </div>
+
+        <button
+          @click="showTemplatePanel = true"
+          class="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-700 hover:bg-cyan-600 text-white text-sm rounded transition-colors border border-cyan-500 font-medium"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          诊断模板
+          <span
+            v-if="store.unacknowledgedAlarmCount > 0"
+            class="ml-0.5 text-xs px-1.5 py-0.5 bg-red-600 text-white rounded-full font-bold"
+          >
+            {{ store.unacknowledgedAlarmCount }}
+          </span>
+        </button>
+
         <button
           @click="handleLoadDbc"
           class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm rounded transition-colors border border-gray-600"
@@ -88,6 +201,15 @@ function handleExport() {
           </span>
         </span>
         <span>DBC消息: {{ store.dbcMessages.size }}</span>
+        <span v-if="store.activeTemplateId" class="text-cyan-400">
+          模板: {{ currentTemplateName }}
+        </span>
+        <span v-if="store.focusSignals.length > 0" class="text-cyan-400">
+          关注信号: {{ store.focusSignals.length }}
+        </span>
+        <span v-if="store.alarmRules.length > 0" class="text-yellow-500">
+          告警规则: {{ store.alarmRules.length }}
+        </span>
       </div>
       <div class="flex items-center gap-4 text-gray-500">
         <span>帧数: {{ store.busStats.totalFrames }}</span>
@@ -96,5 +218,14 @@ function handleExport() {
         <span>负载: {{ store.busLoadPercent }}%</span>
       </div>
     </footer>
+
+    <!-- Diagnostic Template Panel -->
+    <DiagnosticTemplatePanel
+      :visible="showTemplatePanel"
+      @close="showTemplatePanel = false"
+    />
+
+    <!-- Alarm Panel -->
+    <AlarmPanel />
   </div>
 </template>

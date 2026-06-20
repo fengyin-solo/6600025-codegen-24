@@ -1,9 +1,25 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import type { CanFrame, DbcMessage, BusStats } from '../types';
+import type { CanFrame, DbcMessage, BusStats, AlarmRule, AlarmEvent, DiagnosticTemplate } from '../types';
 import { parseDbc, decodeCanFrame, DEFAULT_DBC_CONTENT } from '../utils/dbc-parser';
 
 let frameIdCounter = 0;
+
+function generateId(prefix: string): string {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+}
+
+function evaluateAlarm(value: number, operator: AlarmRule['operator'], threshold: number): boolean {
+  switch (operator) {
+    case '>': return value > threshold;
+    case '<': return value < threshold;
+    case '>=': return value >= threshold;
+    case '<=': return value <= threshold;
+    case '==': return value === threshold;
+    case '!=': return value !== threshold;
+    default: return false;
+  }
+}
 
 export const useCanBusStore = defineStore('canbus', () => {
   const frames = ref<CanFrame[]>([]);
@@ -11,8 +27,12 @@ export const useCanBusStore = defineStore('canbus', () => {
   const dbcMessages = ref<Map<number, DbcMessage>>(new Map());
   const filterId = ref('');
   const filterText = ref('');
+  const focusSignals = ref<string[]>([]);
+  const alarmRules = ref<AlarmRule[]>([]);
+  const activeAlarms = ref<AlarmEvent[]>([]);
   const isCapturing = ref(false);
   const pollInterval = ref<number | null>(null);
+  const activeTemplateId = ref<string | null>(null);
 
   const busStats = ref<BusStats>({
     totalFrames: 0,
@@ -52,6 +72,25 @@ export const useCanBusStore = defineStore('canbus', () => {
     return busStats.value.busLoad.toFixed(1);
   });
 
+  const availableSignals = computed(() => {
+    const names = new Set<string>();
+    for (const msg of dbcMessages.value.values()) {
+      for (const sig of msg.signals) {
+        names.add(sig.name);
+      }
+    }
+    for (const frame of frames.value) {
+      for (const key of Object.keys(frame.decoded)) {
+        names.add(key);
+      }
+    }
+    return Array.from(names).sort();
+  });
+
+  const unacknowledgedAlarmCount = computed(() =>
+    activeAlarms.value.filter(a => !a.acknowledged).length
+  );
+
   function addFrame(frame: CanFrame) {
     frames.value.push(frame);
     if (frames.value.length > 500) {
@@ -82,6 +121,35 @@ export const useCanBusStore = defineStore('canbus', () => {
 
     // Simulate bus load (random 15-45%)
     busStats.value.busLoad = 15 + Math.random() * 30;
+
+    // Evaluate alarm rules against decoded signals
+    for (const rule of alarmRules.value) {
+      if (!rule.enabled) continue;
+      const value = frame.decoded[rule.signalName];
+      if (typeof value !== 'number') continue;
+      if (evaluateAlarm(value, rule.operator, rule.threshold)) {
+        const existing = activeAlarms.value.find(
+          a => a.ruleId === rule.id && !a.acknowledged
+        );
+        if (!existing) {
+          activeAlarms.value.unshift({
+            id: generateId('alarm'),
+            ruleId: rule.id,
+            ruleName: rule.message || `${rule.signalName} ${rule.operator} ${rule.threshold}`,
+            signalName: rule.signalName,
+            operator: rule.operator,
+            threshold: rule.threshold,
+            actualValue: value,
+            message: rule.message,
+            timestamp: Date.now(),
+            acknowledged: false
+          });
+          if (activeAlarms.value.length > 50) {
+            activeAlarms.value = activeAlarms.value.slice(0, 50);
+          }
+        }
+      }
+    }
   }
 
   function clearFrames() {
@@ -196,16 +264,93 @@ export const useCanBusStore = defineStore('canbus', () => {
     return header + rows;
   }
 
+  function applyTemplate(template: DiagnosticTemplate) {
+    filterId.value = template.filterId;
+    filterText.value = template.filterText;
+    focusSignals.value = [...template.focusSignals];
+    alarmRules.value = template.alarmRules.map(r => ({ ...r }));
+    activeTemplateId.value = template.id;
+  }
+
+  function clearTemplateState() {
+    filterId.value = '';
+    filterText.value = '';
+    focusSignals.value = [];
+    alarmRules.value = [];
+    activeTemplateId.value = null;
+    activeAlarms.value = [];
+  }
+
+  function buildTemplateFromCurrent(name: string, description: string): DiagnosticTemplate {
+    return {
+      id: '',
+      name: name.trim() || '未命名模板',
+      description: description.trim(),
+      filterId: filterId.value,
+      filterText: filterText.value,
+      focusSignals: [...focusSignals.value],
+      alarmRules: alarmRules.value.map(r => ({ ...r })),
+      createdAt: 0,
+      updatedAt: 0
+    };
+  }
+
+  function toggleFocusSignal(name: string) {
+    const idx = focusSignals.value.indexOf(name);
+    if (idx >= 0) {
+      focusSignals.value = focusSignals.value.filter(s => s !== name);
+    } else {
+      focusSignals.value = [...focusSignals.value, name];
+    }
+  }
+
+  function addAlarmRule(rule: Omit<AlarmRule, 'id'>): AlarmRule {
+    const newRule: AlarmRule = { ...rule, id: generateId('rule') };
+    alarmRules.value = [...alarmRules.value, newRule];
+    return newRule;
+  }
+
+  function updateAlarmRule(id: string, patch: Partial<AlarmRule>) {
+    alarmRules.value = alarmRules.value.map(r =>
+      r.id === id ? { ...r, ...patch } : r
+    );
+  }
+
+  function removeAlarmRule(id: string) {
+    alarmRules.value = alarmRules.value.filter(r => r.id !== id);
+    activeAlarms.value = activeAlarms.value.filter(a => a.ruleId !== id);
+  }
+
+  function acknowledgeAlarm(id: string) {
+    activeAlarms.value = activeAlarms.value.map(a =>
+      a.id === id ? { ...a, acknowledged: true } : a
+    );
+  }
+
+  function acknowledgeAllAlarms() {
+    activeAlarms.value = activeAlarms.value.map(a => ({ ...a, acknowledged: true }));
+  }
+
+  function clearAlarms() {
+    activeAlarms.value = [];
+  }
+
   return {
     frames,
     signals,
     dbcMessages,
     filterId,
     filterText,
+    focusSignals,
+    alarmRules,
+    activeAlarms,
+    activeTemplateId,
     busStats,
     isCapturing,
     filteredFrames,
     busLoadPercent,
+    availableSignals,
+    unacknowledgedAlarmCount,
     addFrame,
     clearFrames,
     loadMockDbc,
@@ -213,6 +358,16 @@ export const useCanBusStore = defineStore('canbus', () => {
     startCapture,
     stopCapture,
     decodeFrame,
-    exportFrames
+    exportFrames,
+    applyTemplate,
+    clearTemplateState,
+    buildTemplateFromCurrent,
+    toggleFocusSignal,
+    addAlarmRule,
+    updateAlarmRule,
+    removeAlarmRule,
+    acknowledgeAlarm,
+    acknowledgeAllAlarms,
+    clearAlarms
   };
 });

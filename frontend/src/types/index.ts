@@ -36,3 +36,47 @@ export interface BusStats {
   busLoad: number;
   lastUpdate: number;
 }
+
+export type AlarmOperator = '>' | '<' | '>=' | '<=' | '==' | '!=';
+
+export interface AlarmRule {
+  id: string;
+  signalName: string;
+  operator: AlarmOperator;
+  threshold: number;
+  enabled: boolean;
+  message: string;
+}
+
+export interface DiagnosticTemplate {
+  id: string;
+  name: string;
+  description: string;
+  filterId: string;
+  filterText: string;
+  focusSignals: string[];
+  alarmRules: AlarmRule[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Vehicle {
+  id: string;
+  name: string;
+  vin: string;
+  activeTemplateId: string | null;
+  createdAt: number;
+}
+
+export interface AlarmEvent {
+  id: string;
+  ruleId: string;
+  ruleName: string;
+  signalName: string;
+  operator: AlarmOperator;
+  threshold: number;
+  actualValue: number;
+  message: string;
+  timestamp: number;
+  acknowledged: boolean;
+}
